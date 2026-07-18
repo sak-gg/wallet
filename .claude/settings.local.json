@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"/Users/saksham/Desktop/assignment/wallet/.claude/skills/system-design-planning\")",
+      "Bash(go build *)",
+      "Bash(gofmt -w internal/handler/wallet_handler_test.go)",
+      "Bash(gofmt -l .)",
+      "Bash(go test *)",
+      "Bash(export TEST_DATABASE_DSN='root@tcp\\(127.0.0.1:3306\\)/wallet_test?parseTime=true&loc=UTC')"
+    ],
+    "additionalDirectories": [
+      "/Users/saksham/Desktop/assignment/wallet/.claude/skills"
+    ]
+  }
+}
