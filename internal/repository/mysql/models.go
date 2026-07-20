@@ -16,13 +16,21 @@ type walletRecord struct {
 
 func (walletRecord) TableName() string { return "wallets" }
 
+// uq_transactions_wallet_order is scoped to (wallet_id, order_id, type), not just
+// (wallet_id, order_id): the priority tags keep wallet_id+order_id as the leading
+// columns (so the FindTransactionByOrderID lookup, which filters on exactly those
+// two, still hits a leftmost-prefix match), with type appended so a future
+// order-linked type — e.g. a refund reversing a deduct for the same order — can
+// coexist as its own row instead of colliding with the original deduct's row.
+// If/when that lands, FindTransactionByOrderID-style lookups must start filtering
+// by type too, or a lookup for one type could match a different type's row.
 type transactionRecord struct {
 	ID           string    `gorm:"type:char(36);primaryKey"`
-	WalletID     string    `gorm:"type:char(36);not null;index:idx_transactions_wallet_created;uniqueIndex:uq_transactions_wallet_order"`
-	Type         string    `gorm:"type:varchar(16);not null;check:type in ('topup','deduct')"`
+	WalletID     string    `gorm:"type:char(36);not null;index:idx_transactions_wallet_created;uniqueIndex:uq_transactions_wallet_order,priority:1"`
+	Type         string    `gorm:"type:varchar(16);not null;check:type in ('topup','deduct');uniqueIndex:uq_transactions_wallet_order,priority:3"`
 	Amount       int64     `gorm:"not null;check:amount > 0"`
 	BalanceAfter int64     `gorm:"not null;check:balance_after >= 0"`
-	OrderID      *string   `gorm:"type:varchar(255);uniqueIndex:uq_transactions_wallet_order"`
+	OrderID      *string   `gorm:"type:varchar(255);uniqueIndex:uq_transactions_wallet_order,priority:2"`
 	CreatedAt    time.Time `gorm:"index:idx_transactions_wallet_created"`
 }
 

@@ -1,0 +1,131 @@
+{
+  "info": {
+    "name": "Wallet Service",
+    "description": "API collection for the wallet service (create wallet, top up, deduct, balance, transaction history).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "wallet_id",
+      "value": "",
+      "type": "string",
+      "description": "Set this after creating a wallet, from the response `id` field."
+    }
+  ],
+  "item": [
+    {
+      "name": "Create Wallet",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customer_id\": \"customer-123\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/wallets",
+          "host": ["{{base_url}}"],
+          "path": ["wallets"]
+        },
+        "description": "Creates a new wallet for a customer. Returns 409 DUPLICATE_WALLET if the customer already has a wallet."
+      },
+      "response": []
+    },
+    {
+      "name": "Top Up Wallet",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 1000\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/wallets/{{wallet_id}}/topup",
+          "host": ["{{base_url}}"],
+          "path": ["wallets", "{{wallet_id}}", "topup"]
+        },
+        "description": "Adds funds to a wallet. `amount` must be a positive integer."
+      },
+      "response": []
+    },
+    {
+      "name": "Deduct from Wallet",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 500,\n  \"order_id\": \"order-123\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/wallets/{{wallet_id}}/deduct",
+          "host": ["{{base_url}}"],
+          "path": ["wallets", "{{wallet_id}}", "deduct"]
+        },
+        "description": "Deducts funds from a wallet. `order_id` is used for idempotency — repeating the same order_id returns the original transaction with `idempotent_replay: true`. Returns 422 INSUFFICIENT_FUNDS if balance is too low."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Balance",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/wallets/{{wallet_id}}/balance",
+          "host": ["{{base_url}}"],
+          "path": ["wallets", "{{wallet_id}}", "balance"]
+        },
+        "description": "Returns the current balance for a wallet."
+      },
+      "response": []
+    },
+    {
+      "name": "List Transactions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/wallets/{{wallet_id}}/transactions?limit=50&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["wallets", "{{wallet_id}}", "transactions"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "50",
+              "description": "Optional, default 50"
+            },
+            {
+              "key": "offset",
+              "value": "0",
+              "description": "Optional, default 0"
+            }
+          ]
+        },
+        "description": "Lists transactions for a wallet, paginated via limit/offset."
+      },
+      "response": []
+    }
+  ]
+}

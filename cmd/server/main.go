@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 
+	"github.com/joho/godotenv"
+
 	"wallet/internal/config"
 	"wallet/internal/handler"
 	"wallet/internal/repository/mysql"
@@ -11,6 +13,9 @@ import (
 )
 
 func main() {
+	// Best-effort: .env is a local dev convenience, absent in production.
+	_ = godotenv.Load()
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("load config: %v", err)
