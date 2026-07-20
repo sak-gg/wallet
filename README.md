@@ -6,6 +6,7 @@
 - Wallet service planning discussion: [.claude/chats/wallet-service-planning.md](.claude/chats/wallet-service-planning.md)
 - Order Service integration mock discussion: [.claude/chats/order-service-integration-mock.md](.claude/chats/order-service-integration-mock.md)
 - Implementation plan: [.claude/plans/plan.md](.claude/plans/plan.md)
+- Future scope plan (SDK, rate limiting, retries): [.claude/plans/future-plan.md](.claude/plans/future-plan.md)
 - Test methodology: [.claude/test](.claude/test)
 - DB schema (DBML source): [schema.dbml](schema.dbml)
 - DB schema (diagram): [schema.png](schema.png)
