@@ -79,9 +79,9 @@ type fakeLockedWallet struct {
 
 func (l *fakeLockedWallet) Wallet() domain.Wallet { return l.wallet }
 
-func (l *fakeLockedWallet) FindTransactionByOrderID(ctx context.Context, orderID string) (domain.Transaction, bool, error) {
+func (l *fakeLockedWallet) FindTransactionByOrderID(ctx context.Context, orderID string, txnType domain.TransactionType) (domain.Transaction, bool, error) {
 	for _, t := range l.repo.transactionsByWallet[l.wallet.ID] {
-		if t.OrderID != nil && *t.OrderID == orderID {
+		if t.OrderID != nil && *t.OrderID == orderID && t.Type == txnType {
 			return t, true, nil
 		}
 	}
@@ -91,7 +91,7 @@ func (l *fakeLockedWallet) FindTransactionByOrderID(ctx context.Context, orderID
 func (l *fakeLockedWallet) InsertTransaction(ctx context.Context, txn domain.Transaction) (domain.Transaction, bool, error) {
 	if txn.OrderID != nil {
 		for _, t := range l.repo.transactionsByWallet[l.wallet.ID] {
-			if t.OrderID != nil && *t.OrderID == *txn.OrderID {
+			if t.OrderID != nil && *t.OrderID == *txn.OrderID && t.Type == txn.Type {
 				return t, true, nil
 			}
 		}

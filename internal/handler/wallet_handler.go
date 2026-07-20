@@ -19,7 +19,7 @@ import (
 // at the consumer. Satisfied by *service.WalletService.
 type WalletService interface {
 	CreateWallet(ctx context.Context, customerID string) (domain.Wallet, error)
-	TopUp(ctx context.Context, walletID string, amount int64) (service.TopUpResult, error)
+	TopUp(ctx context.Context, walletID string, amount int64, orderID string) (service.TopUpResult, error)
 	Deduct(ctx context.Context, walletID string, amount int64, orderID string) (service.DeductResult, error)
 	GetBalance(ctx context.Context, walletID string) (domain.Wallet, error)
 	ListTransactions(ctx context.Context, walletID string, limit, offset int) ([]domain.Transaction, error)
@@ -46,7 +46,8 @@ type walletResponse struct {
 }
 
 type topupRequest struct {
-	Amount int64 `json:"amount"`
+	Amount  int64  `json:"amount"`
+	OrderID string `json:"order_id"`
 }
 
 type deductRequest struct {
@@ -64,9 +65,10 @@ type transactionResponse struct {
 }
 
 type topupResponse struct {
-	WalletID    string              `json:"wallet_id"`
-	Balance     int64               `json:"balance"`
-	Transaction transactionResponse `json:"transaction"`
+	WalletID         string              `json:"wallet_id"`
+	Balance          int64               `json:"balance"`
+	Transaction      transactionResponse `json:"transaction"`
+	IdempotentReplay bool                `json:"idempotent_replay"`
 }
 
 type deductResponse struct {
@@ -124,16 +126,17 @@ func (h *Handler) TopUp(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.TopUp(c.Request.Context(), walletID, req.Amount)
+	result, err := h.service.TopUp(c.Request.Context(), walletID, req.Amount, req.OrderID)
 	if err != nil {
 		writeServiceError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, topupResponse{
-		WalletID:    result.WalletID,
-		Balance:     result.Balance,
-		Transaction: toTransactionResponse(result.Transaction),
+		WalletID:         result.WalletID,
+		Balance:          result.Balance,
+		Transaction:      toTransactionResponse(result.Transaction),
+		IdempotentReplay: result.IdempotentReplay,
 	})
 }
 

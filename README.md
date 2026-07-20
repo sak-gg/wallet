@@ -66,16 +66,20 @@ curl -X POST http://localhost:8080/wallets \
 `201` on success. `409 DUPLICATE_WALLET` if the customer already has one (one wallet per
 customer). `400 VALIDATION_ERROR` if `customer_id` is empty.
 
-### Top up
+### Top up (idempotent)
 
 ```bash
 curl -X POST http://localhost:8080/wallets/{id}/topup \
   -H 'Content-Type: application/json' \
-  -d '{"amount": 500}'
+  -d '{"amount": 500, "order_id": "topup-ref-001"}'
 ```
 
-`200` with the new balance and the ledger entry. `400` for a non-positive amount, `404` if
-the wallet doesn't exist.
+`200` whether this is the first call or a retry — the response includes
+`"idempotent_replay": true/false`. `order_id` here is a caller-supplied reference for the
+topup itself (e.g. a payment/PSP reference), not an order — calling this again with the
+same `order_id` for the same wallet is a no-op that returns the original result, never a
+double credit. `400` for a non-positive amount or missing `order_id`, `404` if the wallet
+doesn't exist.
 
 ### Deduct (idempotent)
 
@@ -111,13 +115,16 @@ Ordered most-recent-first. `limit` defaults to 50, capped at 200.
   transaction that takes `SELECT ... FOR UPDATE` on the wallet row first. Two concurrent
   requests against the *same* wallet serialize on that lock — the second only proceeds after
   the first commits.
-- **Idempotency**: `deduct` checks for an existing ledger row with the same
-  `(wallet_id, order_id)` *inside* that same lock, before deciding whether to act. Because the
-  wallet row is locked for the whole transaction, this check-then-act is race-free without
-  any extra coordination. A DB-level unique constraint on `(wallet_id, order_id)` is a safety
-  net in case a future code path narrows the lock's scope; the ledger insert happens *before*
-  the balance update specifically so that if that safety net ever fires, the balance was never
-  touched for that attempt.
+- **Idempotency**: both `topup` and `deduct` check for an existing ledger row with the same
+  `(wallet_id, order_id, type)` *inside* that same lock, before deciding whether to act.
+  `order_id` doubles as a generic external-reference column — an order reference for deduct,
+  a caller-supplied topup reference for topup — with `type` in the lookup and the unique
+  constraint so the two never collide even if a caller reuses the same value for both. Because
+  the wallet row is locked for the whole transaction, this check-then-act is race-free without
+  any extra coordination. The DB-level unique constraint on `(wallet_id, order_id, type)` is a
+  safety net in case a future code path narrows the lock's scope; the ledger insert happens
+  *before* the balance update specifically so that if that safety net ever fires, the balance
+  was never touched for that attempt.
 - **No auth layer**: the Order Service is assumed to be a trusted internal caller (network
   boundary), not something this service enforces.
 

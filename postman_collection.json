@@ -53,14 +53,14 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"amount\": 1000\n}"
+          "raw": "{\n  \"amount\": 1000,\n  \"order_id\": \"topup-ref-001\"\n}"
         },
         "url": {
           "raw": "{{base_url}}/wallets/{{wallet_id}}/topup",
           "host": ["{{base_url}}"],
           "path": ["wallets", "{{wallet_id}}", "topup"]
         },
-        "description": "Adds funds to a wallet. `amount` must be a positive integer."
+        "description": "Adds funds to a wallet. `amount` must be a positive integer. `order_id` is a caller-supplied reference used for idempotency — repeating the same order_id returns the original transaction with `idempotent_replay: true` instead of double-crediting."
       },
       "response": []
     },

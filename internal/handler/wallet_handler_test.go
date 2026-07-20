@@ -18,7 +18,7 @@ import (
 
 type fakeService struct {
 	createWalletFn     func(ctx context.Context, customerID string) (domain.Wallet, error)
-	topUpFn            func(ctx context.Context, walletID string, amount int64) (service.TopUpResult, error)
+	topUpFn            func(ctx context.Context, walletID string, amount int64, orderID string) (service.TopUpResult, error)
 	deductFn           func(ctx context.Context, walletID string, amount int64, orderID string) (service.DeductResult, error)
 	getBalanceFn       func(ctx context.Context, walletID string) (domain.Wallet, error)
 	listTransactionsFn func(ctx context.Context, walletID string, limit, offset int) ([]domain.Transaction, error)
@@ -28,8 +28,8 @@ func (f *fakeService) CreateWallet(ctx context.Context, customerID string) (doma
 	return f.createWalletFn(ctx, customerID)
 }
 
-func (f *fakeService) TopUp(ctx context.Context, walletID string, amount int64) (service.TopUpResult, error) {
-	return f.topUpFn(ctx, walletID, amount)
+func (f *fakeService) TopUp(ctx context.Context, walletID string, amount int64, orderID string) (service.TopUpResult, error) {
+	return f.topUpFn(ctx, walletID, amount, orderID)
 }
 
 func (f *fakeService) Deduct(ctx context.Context, walletID string, amount int64, orderID string) (service.DeductResult, error) {
@@ -129,13 +129,13 @@ func TestCreateWallet_MalformedJSON(t *testing.T) {
 
 func TestTopUp_WalletNotFound(t *testing.T) {
 	fake := &fakeService{
-		topUpFn: func(ctx context.Context, walletID string, amount int64) (service.TopUpResult, error) {
+		topUpFn: func(ctx context.Context, walletID string, amount int64, orderID string) (service.TopUpResult, error) {
 			return service.TopUpResult{}, domain.ErrWalletNotFound
 		},
 	}
 	r := handler.NewRouter(handler.NewHandler(fake))
 
-	rec := doRequest(t, r, http.MethodPost, "/wallets/"+validWalletID+"/topup", map[string]int64{"amount": 500})
+	rec := doRequest(t, r, http.MethodPost, "/wallets/"+validWalletID+"/topup", map[string]any{"amount": 500, "order_id": "topup-1"})
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -156,13 +156,13 @@ func TestTopUp_InvalidWalletIDInPath(t *testing.T) {
 
 func TestTopUp_InvalidAmount(t *testing.T) {
 	fake := &fakeService{
-		topUpFn: func(ctx context.Context, walletID string, amount int64) (service.TopUpResult, error) {
+		topUpFn: func(ctx context.Context, walletID string, amount int64, orderID string) (service.TopUpResult, error) {
 			return service.TopUpResult{}, domain.ErrInvalidAmount
 		},
 	}
 	r := handler.NewRouter(handler.NewHandler(fake))
 
-	rec := doRequest(t, r, http.MethodPost, "/wallets/"+validWalletID+"/topup", map[string]int64{"amount": 0})
+	rec := doRequest(t, r, http.MethodPost, "/wallets/"+validWalletID+"/topup", map[string]any{"amount": 0, "order_id": "topup-1"})
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -173,7 +173,7 @@ func TestTopUp_InvalidAmount(t *testing.T) {
 
 func TestTopUp_FloatAmountRejected(t *testing.T) {
 	fake := &fakeService{
-		topUpFn: func(ctx context.Context, walletID string, amount int64) (service.TopUpResult, error) {
+		topUpFn: func(ctx context.Context, walletID string, amount int64, orderID string) (service.TopUpResult, error) {
 			t.Fatalf("service should not be called for a malformed body")
 			return service.TopUpResult{}, nil
 		},

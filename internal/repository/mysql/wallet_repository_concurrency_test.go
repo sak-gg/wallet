@@ -56,7 +56,7 @@ func TestConcurrentDeduct_DistinctOrders_BalanceIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create wallet: %v", err)
 	}
-	if _, err := svc.TopUp(ctx, wallet.ID, startBalance); err != nil {
+	if _, err := svc.TopUp(ctx, wallet.ID, startBalance, "topup-"+uuid.NewString()); err != nil {
 		t.Fatalf("top up: %v", err)
 	}
 
@@ -101,6 +101,83 @@ func TestConcurrentDeduct_DistinctOrders_BalanceIntegrity(t *testing.T) {
 	}
 }
 
+// TestConcurrentTopUp_SameOrderID_IdempotentUnderRace mirrors the deduct
+// race test below, but for TopUp: many goroutines call TopUp concurrently
+// with the SAME order_id (e.g. a retried topup HTTP call). Exactly one must
+// actually credit the balance; every caller must observe the same
+// transaction and resulting balance.
+func TestConcurrentTopUp_SameOrderID_IdempotentUnderRace(t *testing.T) {
+	repo := newTestRepository(t)
+	svc := service.NewWalletService(repo)
+	ctx := context.Background()
+
+	const (
+		m      = 20
+		amount = int64(100)
+	)
+
+	wallet, err := svc.CreateWallet(ctx, "concurrency-test-"+uuid.NewString())
+	if err != nil {
+		t.Fatalf("create wallet: %v", err)
+	}
+
+	orderID := "shared-topup-" + uuid.NewString()
+
+	var wg sync.WaitGroup
+	results := make([]service.TopUpResult, m)
+	errs := make([]error, m)
+	for i := 0; i < m; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			result, err := svc.TopUp(ctx, wallet.ID, amount, orderID)
+			results[i] = result
+			errs[i] = err
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("topup %d failed: %v", i, err)
+		}
+	}
+
+	firstTxnID := results[0].Transaction.ID
+	for i, result := range results {
+		if result.Transaction.ID != firstTxnID {
+			t.Fatalf("goroutine %d got transaction id %s, expected %s (same as goroutine 0) for the same order_id",
+				i, result.Transaction.ID, firstTxnID)
+		}
+		if result.Balance != amount {
+			t.Fatalf("goroutine %d observed balance %d, expected %d", i, result.Balance, amount)
+		}
+	}
+
+	final, err := svc.GetBalance(ctx, wallet.ID)
+	if err != nil {
+		t.Fatalf("get balance: %v", err)
+	}
+	if final.Balance != amount {
+		t.Fatalf("expected balance %d after a single effective topup despite %d concurrent calls, got %d",
+			amount, m, final.Balance)
+	}
+
+	txns, err := svc.ListTransactions(ctx, wallet.ID, 200, 0)
+	if err != nil {
+		t.Fatalf("list transactions: %v", err)
+	}
+	topupCount := 0
+	for _, txn := range txns {
+		if txn.Type == domain.TransactionTypeTopup {
+			topupCount++
+		}
+	}
+	if topupCount != 1 {
+		t.Fatalf("expected exactly 1 topup ledger entry despite %d concurrent calls with the same order_id, got %d", m, topupCount)
+	}
+}
+
 // TestConcurrentDeduct_SameOrderID_IdempotentUnderRace simulates an Order
 // Service retry storm: many goroutines call Deduct concurrently with the
 // SAME order_id. Exactly one must actually take effect; every caller must
@@ -120,7 +197,7 @@ func TestConcurrentDeduct_SameOrderID_IdempotentUnderRace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create wallet: %v", err)
 	}
-	if _, err := svc.TopUp(ctx, wallet.ID, start); err != nil {
+	if _, err := svc.TopUp(ctx, wallet.ID, start, "topup-"+uuid.NewString()); err != nil {
 		t.Fatalf("top up: %v", err)
 	}
 

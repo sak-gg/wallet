@@ -158,9 +158,9 @@ type lockedWallet struct {
 
 func (l *lockedWallet) Wallet() domain.Wallet { return l.wallet }
 
-func (l *lockedWallet) FindTransactionByOrderID(ctx context.Context, orderID string) (domain.Transaction, bool, error) {
+func (l *lockedWallet) FindTransactionByOrderID(ctx context.Context, orderID string, txnType domain.TransactionType) (domain.Transaction, bool, error) {
 	var rec transactionRecord
-	err := l.tx.WithContext(ctx).Where("wallet_id = ? AND order_id = ?", l.wallet.ID, orderID).First(&rec).Error
+	err := l.tx.WithContext(ctx).Where("wallet_id = ? AND order_id = ? AND type = ?", l.wallet.ID, orderID, string(txnType)).First(&rec).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.Transaction{}, false, nil
@@ -177,7 +177,7 @@ func (l *lockedWallet) InsertTransaction(ctx context.Context, txn domain.Transac
 		if errors.Is(err, gorm.ErrDuplicatedKey) && txn.OrderID != nil {
 			var existing transactionRecord
 			findErr := l.tx.WithContext(ctx).
-				Where("wallet_id = ? AND order_id = ?", l.wallet.ID, *txn.OrderID).
+				Where("wallet_id = ? AND order_id = ? AND type = ?", l.wallet.ID, *txn.OrderID, string(txn.Type)).
 				First(&existing).Error
 			if findErr != nil {
 				return domain.Transaction{}, false, fmt.Errorf("re-fetch after duplicate transaction insert: %w", findErr)

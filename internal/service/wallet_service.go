@@ -15,7 +15,12 @@ import (
 // plus the ledger operations that must happen inside that same lock.
 type LockedWallet interface {
 	Wallet() domain.Wallet
-	FindTransactionByOrderID(ctx context.Context, orderID string) (domain.Transaction, bool, error)
+	// FindTransactionByOrderID looks up an existing ledger row scoped to both
+	// orderID and txnType: order_id is shared across transaction types (a
+	// topup's idempotency key and a deduct's order reference occupy the same
+	// column), so the type filter is required to avoid one type's row
+	// satisfying a lookup for another type sharing the same order_id value.
+	FindTransactionByOrderID(ctx context.Context, orderID string, txnType domain.TransactionType) (domain.Transaction, bool, error)
 	// InsertTransaction returns (existing, true, nil) instead of an error if a
 	// unique-constraint safety net fires on (wallet_id, order_id) — this should
 	// be structurally unreachable given the row lock held for the transaction,
@@ -39,9 +44,10 @@ type WalletRepository interface {
 }
 
 type TopUpResult struct {
-	WalletID    string
-	Balance     int64
-	Transaction domain.Transaction
+	WalletID         string
+	Balance          int64
+	Transaction      domain.Transaction
+	IdempotentReplay bool
 }
 
 type DeductResult struct {
@@ -75,34 +81,65 @@ func (s *WalletService) CreateWallet(ctx context.Context, customerID string) (do
 	return s.repo.CreateWallet(ctx, wallet)
 }
 
-func (s *WalletService) TopUp(ctx context.Context, walletID string, amount int64) (TopUpResult, error) {
+func (s *WalletService) TopUp(ctx context.Context, walletID string, amount int64, orderID string) (TopUpResult, error) {
 	if amount <= 0 {
 		return TopUpResult{}, domain.ErrInvalidAmount
+	}
+	if strings.TrimSpace(orderID) == "" {
+		return TopUpResult{}, domain.ErrInvalidOrderID
 	}
 
 	var result TopUpResult
 	err := s.repo.WithWalletLock(ctx, walletID, func(ctx context.Context, locked LockedWallet) error {
 		wallet := locked.Wallet()
-		newBalance := wallet.Balance + amount
 
+		if existing, found, err := locked.FindTransactionByOrderID(ctx, orderID, domain.TransactionTypeTopup); err != nil {
+			return err
+		} else if found {
+			result = TopUpResult{
+				WalletID:         walletID,
+				Balance:          wallet.Balance,
+				Transaction:      existing,
+				IdempotentReplay: true,
+			}
+			return nil
+		}
+
+		newBalance := wallet.Balance + amount
+		oid := orderID
 		txn := domain.Transaction{
 			ID:           uuid.NewString(),
 			WalletID:     walletID,
 			Type:         domain.TransactionTypeTopup,
 			Amount:       amount,
 			BalanceAfter: newBalance,
-			OrderID:      nil,
+			OrderID:      &oid,
 			CreatedAt:    time.Now().UTC(),
 		}
-		inserted, _, err := locked.InsertTransaction(ctx, txn)
+
+		// Insert before mutating the balance: if this hits the safety-net
+		// unique-constraint replay, the balance is never touched for this
+		// attempt, so a duplicate can never be double-credited even in that
+		// (structurally unreachable) path. Mirrors Deduct's ordering.
+		inserted, safetyNetReplay, err := locked.InsertTransaction(ctx, txn)
 		if err != nil {
 			return err
 		}
+		if safetyNetReplay {
+			result = TopUpResult{
+				WalletID:         walletID,
+				Balance:          wallet.Balance,
+				Transaction:      inserted,
+				IdempotentReplay: true,
+			}
+			return nil
+		}
+
 		if err := locked.UpdateBalance(ctx, newBalance); err != nil {
 			return err
 		}
 
-		result = TopUpResult{WalletID: walletID, Balance: newBalance, Transaction: inserted}
+		result = TopUpResult{WalletID: walletID, Balance: newBalance, Transaction: inserted, IdempotentReplay: false}
 		return nil
 	})
 	if err != nil {
@@ -123,7 +160,7 @@ func (s *WalletService) Deduct(ctx context.Context, walletID string, amount int6
 	err := s.repo.WithWalletLock(ctx, walletID, func(ctx context.Context, locked LockedWallet) error {
 		wallet := locked.Wallet()
 
-		if existing, found, err := locked.FindTransactionByOrderID(ctx, orderID); err != nil {
+		if existing, found, err := locked.FindTransactionByOrderID(ctx, orderID, domain.TransactionTypeDeduct); err != nil {
 			return err
 		} else if found {
 			result = DeductResult{

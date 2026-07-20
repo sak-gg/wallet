@@ -47,7 +47,7 @@ func TestTopUp_Success(t *testing.T) {
 	ctx := context.Background()
 	w := mustCreateWallet(t, s, "cust-1")
 
-	result, err := s.TopUp(ctx, w.ID, 500)
+	result, err := s.TopUp(ctx, w.ID, 500, "topup-1")
 	if err != nil {
 		t.Fatalf("TopUp unexpected error: %v", err)
 	}
@@ -56,6 +56,9 @@ func TestTopUp_Success(t *testing.T) {
 	}
 	if result.Transaction.Type != domain.TransactionTypeTopup || result.Transaction.Amount != 500 {
 		t.Fatalf("unexpected transaction record: %+v", result.Transaction)
+	}
+	if result.IdempotentReplay {
+		t.Fatalf("expected first topup to not be a replay")
 	}
 
 	balance, err := s.GetBalance(ctx, w.ID)
@@ -73,18 +76,87 @@ func TestTopUp_InvalidAmount(t *testing.T) {
 	w := mustCreateWallet(t, s, "cust-1")
 
 	for _, amount := range []int64{0, -1, -100} {
-		_, err := s.TopUp(ctx, w.ID, amount)
+		_, err := s.TopUp(ctx, w.ID, amount, "topup-1")
 		if !errors.Is(err, domain.ErrInvalidAmount) {
 			t.Fatalf("TopUp(%d) expected ErrInvalidAmount, got %v", amount, err)
 		}
 	}
 }
 
+func TestTopUp_MissingOrderID(t *testing.T) {
+	s := newTestService()
+	ctx := context.Background()
+	w := mustCreateWallet(t, s, "cust-1")
+
+	_, err := s.TopUp(ctx, w.ID, 100, "   ")
+	if !errors.Is(err, domain.ErrInvalidOrderID) {
+		t.Fatalf("expected ErrInvalidOrderID, got %v", err)
+	}
+}
+
 func TestTopUp_WalletNotFound(t *testing.T) {
 	s := newTestService()
-	_, err := s.TopUp(context.Background(), "missing-id", 100)
+	_, err := s.TopUp(context.Background(), "missing-id", 100, "topup-1")
 	if !errors.Is(err, domain.ErrWalletNotFound) {
 		t.Fatalf("expected ErrWalletNotFound, got %v", err)
+	}
+}
+
+func TestTopUp_IdempotentReplay(t *testing.T) {
+	s := newTestService()
+	ctx := context.Background()
+	w := mustCreateWallet(t, s, "cust-1")
+
+	first, err := s.TopUp(ctx, w.ID, 500, "topup-1")
+	if err != nil {
+		t.Fatalf("first TopUp unexpected error: %v", err)
+	}
+
+	second, err := s.TopUp(ctx, w.ID, 500, "topup-1")
+	if err != nil {
+		t.Fatalf("second TopUp unexpected error: %v", err)
+	}
+	if !second.IdempotentReplay {
+		t.Fatalf("expected second call to be flagged as a replay")
+	}
+	if second.Balance != first.Balance {
+		t.Fatalf("expected replay balance %d to match original %d", second.Balance, first.Balance)
+	}
+	if second.Transaction.ID != first.Transaction.ID {
+		t.Fatalf("expected replay to return the original transaction id")
+	}
+
+	balance, err := s.GetBalance(ctx, w.ID)
+	if err != nil {
+		t.Fatalf("GetBalance unexpected error: %v", err)
+	}
+	if balance.Balance != 500 {
+		t.Fatalf("expected balance 500 after single effective topup, got %d", balance.Balance)
+	}
+}
+
+// TestTopUp_DeductSharingOrderID proves that reusing order_id as a generic
+// per-type reference is safe: a deduct and a topup using the identical
+// order_id value are independent, because every idempotency lookup and the
+// DB unique constraint are scoped to (wallet_id, order_id, type).
+func TestTopUp_DeductSharingOrderID(t *testing.T) {
+	s := newTestService()
+	ctx := context.Background()
+	w := mustCreateWallet(t, s, "cust-1")
+
+	if _, err := s.TopUp(ctx, w.ID, 500, "shared-id"); err != nil {
+		t.Fatalf("TopUp unexpected error: %v", err)
+	}
+
+	deductResult, err := s.Deduct(ctx, w.ID, 100, "shared-id")
+	if err != nil {
+		t.Fatalf("Deduct unexpected error: %v", err)
+	}
+	if deductResult.IdempotentReplay {
+		t.Fatalf("expected deduct with a shared order_id but different type to not be treated as a replay")
+	}
+	if deductResult.Balance != 400 {
+		t.Fatalf("expected balance 400, got %d", deductResult.Balance)
 	}
 }
 
@@ -92,7 +164,7 @@ func TestDeduct_Success(t *testing.T) {
 	s := newTestService()
 	ctx := context.Background()
 	w := mustCreateWallet(t, s, "cust-1")
-	if _, err := s.TopUp(ctx, w.ID, 500); err != nil {
+	if _, err := s.TopUp(ctx, w.ID, 500, "topup-1"); err != nil {
 		t.Fatalf("setup TopUp failed: %v", err)
 	}
 
@@ -115,7 +187,7 @@ func TestDeduct_InsufficientFunds(t *testing.T) {
 	s := newTestService()
 	ctx := context.Background()
 	w := mustCreateWallet(t, s, "cust-1")
-	if _, err := s.TopUp(ctx, w.ID, 50); err != nil {
+	if _, err := s.TopUp(ctx, w.ID, 50, "topup-1"); err != nil {
 		t.Fatalf("setup TopUp failed: %v", err)
 	}
 
@@ -137,7 +209,7 @@ func TestDeduct_IdempotentReplay(t *testing.T) {
 	s := newTestService()
 	ctx := context.Background()
 	w := mustCreateWallet(t, s, "cust-1")
-	if _, err := s.TopUp(ctx, w.ID, 500); err != nil {
+	if _, err := s.TopUp(ctx, w.ID, 500, "topup-1"); err != nil {
 		t.Fatalf("setup TopUp failed: %v", err)
 	}
 

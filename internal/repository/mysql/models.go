@@ -16,14 +16,17 @@ type walletRecord struct {
 
 func (walletRecord) TableName() string { return "wallets" }
 
-// uq_transactions_wallet_order is scoped to (wallet_id, order_id, type), not just
-// (wallet_id, order_id): the priority tags keep wallet_id+order_id as the leading
-// columns (so the FindTransactionByOrderID lookup, which filters on exactly those
-// two, still hits a leftmost-prefix match), with type appended so a future
-// order-linked type — e.g. a refund reversing a deduct for the same order — can
-// coexist as its own row instead of colliding with the original deduct's row.
-// If/when that lands, FindTransactionByOrderID-style lookups must start filtering
-// by type too, or a lookup for one type could match a different type's row.
+// order_id doubles as a generic external-reference column: for deduct rows
+// it's the order being paid for, for topup rows it's the caller-supplied
+// reference used for topup idempotency. uq_transactions_wallet_order is
+// scoped to (wallet_id, order_id, type), not just (wallet_id, order_id), so
+// a topup and a deduct (or a future refund type) can independently use the
+// same order_id value without colliding — each type owns its own idempotency
+// space. The priority tags keep wallet_id+order_id as the leading columns
+// for index efficiency; FindTransactionByOrderID filters on all three
+// (wallet_id, order_id, type), since filtering on just the first two would
+// let one type's row satisfy a lookup meant for another type sharing the
+// same order_id value.
 type transactionRecord struct {
 	ID           string    `gorm:"type:char(36);primaryKey"`
 	WalletID     string    `gorm:"type:char(36);not null;index:idx_transactions_wallet_created;uniqueIndex:uq_transactions_wallet_order,priority:1"`
