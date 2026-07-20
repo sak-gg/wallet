@@ -28,7 +28,7 @@ GORM models kept private to the repository package.
 across domain/service/repository/handler layers, and verified it end-to-end — unit tests, `-race`
 concurrency tests against real MySQL, and a full curl walkthrough all passed.
 
-**You:** "do one thing, collect the chat from here, the messages that I've sent, and take a
+**You:** "collect the chat from here, the messages that I've sent, and take a
 one-liner from your responses, and save it in chats directory"
 
 **Me:** Wrote this log to `chats/2026-07-18-wallet-service-planning.md`.
