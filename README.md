@@ -1,5 +1,17 @@
 # Wallet Service
 
+## Docs & design history
+
+- DB schema design discussion: [.claude/chats/db-schema-design-discussion.md](.claude/chats/db-schema-design-discussion.md)
+- Wallet service planning discussion: [.claude/chats/wallet-service-planning.md](.claude/chats/wallet-service-planning.md)
+- Order Service integration mock discussion: [.claude/chats/order-service-integration-mock.md](.claude/chats/order-service-integration-mock.md)
+- Implementation plan: [.claude/plans/plan.md](.claude/plans/plan.md)
+- Test methodology: [.claude/test](.claude/test)
+- DB schema (DBML source): [schema.dbml](schema.dbml)
+- DB schema (diagram): [schema.png](schema.png)
+
+## What it does
+
 An HTTP API that owns customer wallet balances and a full transaction ledger. An external
 Order Service calls this service to deduct funds when a customer places an order; if the
 deduction fails (e.g. insufficient balance), the order is rejected.
