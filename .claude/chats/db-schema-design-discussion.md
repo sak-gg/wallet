@@ -51,3 +51,20 @@ per type — with the caveat that this only supports one refund per order.
 idempotency lookup query stays index-efficient); verified against a fresh MySQL database that
 the constraint covers all three columns, and the full test suite (including the `-race`
 concurrency tests) still passes.
+
+**You:** "in transactionRecord, we have created index on walletID,created_at. there will lots
+of writes in this table. is it wise to have this index?"
+
+**Me:** Yes, for three reasons specific to this table. (1) `transactions` is insert-only — no
+`UPDATE`/`DELETE` anywhere in the repo — so index maintenance is one extra B-tree entry per
+insert, without the rebalancing/fragmentation cost updates usually cause. (2) It's the index
+`ListTransactions` actually needs: `WHERE wallet_id=? ORDER BY created_at DESC LIMIT/OFFSET`
+is satisfied directly off `(wallet_id, created_at)` with no filesort, and since the ledger only
+grows, skipping the index would mean that query degrading over time. (3) Per-wallet inserts
+land at the tail of that wallet's slice of the index since `created_at` is monotonic, so it's
+cheap to maintain — unlike the `char(36)` UUID primary key, which does cause random-order page
+splits on the clustered index, but that's a separate, pre-existing cost unrelated to this index.
+Flagged separately: `OFFSET` pagination on that query will still get slow on deep pages
+regardless of the index (MySQL scans and discards the offset rows); keyset pagination
+(`WHERE wallet_id=? AND created_at < ?`) would scale better if deep paging is expected, but
+that's an independent concern from whether to keep the index.
