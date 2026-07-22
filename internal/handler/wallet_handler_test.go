@@ -144,6 +144,34 @@ func TestTopUp_WalletNotFound(t *testing.T) {
 	}
 }
 
+func TestTopUp_Success(t *testing.T) {
+	fake := &fakeService{
+		topUpFn: func(ctx context.Context, walletID string, amount int64, orderID string) (service.TopUpResult, error) {
+			oid := orderID
+			return service.TopUpResult{
+				WalletID: walletID,
+				Balance:  500,
+				Transaction: domain.Transaction{
+					ID:           "txn-1",
+					WalletID:     walletID,
+					Type:         domain.TransactionTypeTopup,
+					Amount:       amount,
+					BalanceAfter: 500,
+					OrderID:      &oid,
+					CreatedAt:    time.Now().UTC(),
+				},
+				IdempotentReplay: false,
+			}, nil
+		},
+	}
+	r := handler.NewRouter(handler.NewHandler(fake))
+
+	rec := doRequest(t, r, http.MethodPost, "/wallets/"+validWalletID+"/topup", map[string]any{"amount": 500, "order_id": "topup-1"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestTopUp_InvalidWalletIDInPath(t *testing.T) {
 	fake := &fakeService{}
 	r := handler.NewRouter(handler.NewHandler(fake))
@@ -232,6 +260,32 @@ func TestDeduct_Success(t *testing.T) {
 	rec := doRequest(t, r, http.MethodPost, "/wallets/"+validWalletID+"/deduct", map[string]any{"amount": 100, "order_id": "order-1"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetBalance_Success(t *testing.T) {
+	fake := &fakeService{
+		getBalanceFn: func(ctx context.Context, walletID string) (domain.Wallet, error) {
+			return domain.Wallet{ID: walletID, CustomerID: "cust-1", Balance: 500}, nil
+		},
+	}
+	r := handler.NewRouter(handler.NewHandler(fake))
+
+	rec := doRequest(t, r, http.MethodGet, "/wallets/"+validWalletID+"/balance", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		WalletID   string `json:"wallet_id"`
+		CustomerID string `json:"customer_id"`
+		Balance    int64  `json:"balance"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response body: %v (body=%s)", err, rec.Body.String())
+	}
+	if body.WalletID != validWalletID || body.CustomerID != "cust-1" || body.Balance != 500 {
+		t.Fatalf("unexpected response body: %+v", body)
 	}
 }
 

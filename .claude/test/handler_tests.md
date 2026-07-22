@@ -21,6 +21,7 @@ JSON error `code` field.
 
 | Test | Scenario | Expected |
 |---|---|---|
+| `TestTopUp_Success` | Valid amount + `order_id` in body | `200 OK` |
 | `TestTopUp_WalletNotFound` | Service returns `domain.ErrWalletNotFound` | `404 Not Found`, error code `WALLET_NOT_FOUND` |
 | `TestTopUp_InvalidWalletIDInPath` | Path param is not a UUID (`not-a-uuid`) | `400 Bad Request` |
 | `TestTopUp_InvalidAmount` | Service returns `domain.ErrInvalidAmount` (amount `0`) | `400 Bad Request`, error code `VALIDATION_ERROR` |
@@ -37,6 +38,7 @@ JSON error `code` field.
 
 | Test | Scenario | Expected |
 |---|---|---|
+| `TestGetBalance_Success` | Wallet exists | `200 OK`; response body's `wallet_id`, `customer_id`, `balance` match the service result |
 | `TestGetBalance_WalletNotFound` | Service returns `domain.ErrWalletNotFound` | `404 Not Found` |
 
 ## List Transactions — `GET /wallets/{id}/transactions`

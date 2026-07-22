@@ -18,11 +18,17 @@ made at this layer — that's what the repository concurrency tests are for).
 
 ## Top Up
 
+`TopUp` takes an `order_id` too (same idempotency pattern as `Deduct`), keyed on
+`(wallet_id, order_id, type)` so a topup and a deduct can safely reuse the same `order_id` value.
+
 | Test | Scenario | Expected |
 |---|---|---|
-| `TestTopUp_Success` | Top up a fresh wallet by 500 | Result balance `500`; transaction type `topup`, amount `500`; a subsequent `GetBalance` confirms `500` was persisted |
+| `TestTopUp_Success` | Top up a fresh wallet by 500 with `order_id` `"topup-1"` | Result balance `500`; transaction type `topup`, amount `500`; `IdempotentReplay` is `false`; a subsequent `GetBalance` confirms `500` was persisted |
 | `TestTopUp_InvalidAmount` | Amounts `0`, `-1`, `-100` | Each returns `domain.ErrInvalidAmount` |
+| `TestTopUp_MissingOrderID` | `order_id` is whitespace-only (`"   "`) | Returns `domain.ErrInvalidOrderID` |
 | `TestTopUp_WalletNotFound` | Wallet ID `"missing-id"` | Returns `domain.ErrWalletNotFound` |
+| `TestTopUp_IdempotentReplay` | Top up 500 with `order_id` `"topup-1"` twice | Second call's `IdempotentReplay` is `true`; balance and transaction ID match the first call; final balance `500` (not double-credited) |
+| `TestTopUp_DeductSharingOrderID` | Top up 500 with `order_id` `"shared-id"`, then deduct 100 with the same `order_id` `"shared-id"` | Deduct is **not** treated as a replay (different type scopes the idempotency key independently); balance ends at `400` |
 
 ## Deduct
 
