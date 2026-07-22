@@ -18,3 +18,9 @@ We can apply rate limiting on APIs to prevent attacks/abuse. Rate limiting can b
 We can implement retry mechanisms on APIs in this service to make the requests fault tolerant. Exponential backoffs can be used to avoid bombardment of requests.
 
 ---
+
+## 4. BDD scenarios
+
+We can add support for BDD tests, if we want non-engineers to be adding test cases to our service in simple business language.
+
+---
